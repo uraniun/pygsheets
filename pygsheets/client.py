@@ -48,14 +48,14 @@ class Client(object):
 
     spreadsheet_cls = Spreadsheet
 
-    def __init__(self, credentials, retries=3, http=None, check=True):
+    def __init__(self, credentials, retries=3, http=None, check=True, http_pool=None):
         self.oauth = credentials
         self.logger = logging.getLogger(__name__)
 
         http = AuthorizedHttp(credentials, http=http)
         data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-        self.sheet = SheetAPIWrapper(http, data_path, retries=retries, check=check)
+        self.sheet = SheetAPIWrapper(http, data_path, retries=retries, check=check, http_pool=http_pool)
         self.drive = DriveAPIWrapper(http, data_path)
 
     @property

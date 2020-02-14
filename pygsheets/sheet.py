@@ -2,6 +2,7 @@ from pygsheets.spreadsheet import Spreadsheet
 from pygsheets.utils import format_addr
 from pygsheets.exceptions import InvalidArgumentValue
 from pygsheets.custom_types import ValueRenderOption, DateTimeRenderOption
+from pygsheets.http_pool import HttpPool
 
 from googleapiclient import discovery
 from googleapiclient.errors import HttpError
@@ -17,7 +18,7 @@ GOOGLE_SHEET_CELL_UPDATES_LIMIT = 50000
 class SheetAPIWrapper(object):
 
     def __init__(self, http, data_path, seconds_per_quota=100, retries=1, logger=logging.getLogger(__name__),
-                 check=True):
+                 check=True, http_pool: HttpPool = None):
         """A wrapper class for the Google Sheets API v4.
 
         All calls to the the API are made in this class. This ensures that the quota is never hit.
@@ -41,6 +42,7 @@ class SheetAPIWrapper(object):
         self.retries = retries
         self.seconds_per_quota = seconds_per_quota
         self.check = check
+        self.http_pool = http_pool
 
     # TODO: Implement feature to actually combine update requests.
     def batch_update(self, spreadsheet_id, requests, **kwargs):
@@ -313,7 +315,7 @@ class SheetAPIWrapper(object):
         """Returns a range of values from a spreadsheet. The caller must specify the spreadsheet ID and a range.
 
         Reference: `request <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/get>`__
-        
+
         :param spreadsheet_id:              The ID of the spreadsheet to retrieve data from.
         :param value_range:                 The A1 notation of the values to retrieve.
         :param major_dimension:             The major dimension that results should use.
@@ -353,12 +355,22 @@ class SheetAPIWrapper(object):
         :param request:     The request to be made.
         :return:            Response
         """
+        http = self.http_pool.get_http_instance()
+
         try:
-            response = request.execute(num_retries=self.retries)
+            response = request.execute(num_retries=self.retries, http=http)
         except HttpError as error:
             if error.resp['status'] == '429' and self.check:
-                time.sleep(self.seconds_per_quota)  # TODO use asyncio
-                response = request.execute(num_retries=self.retries)
+                http = self.http_pool.get_http_instance(errored=True)
+                try:
+                    response = request.execute(num_retries=self.retries, http=http)
+                except HttpError as error:
+                    if error.resp['status'] == '429' and self.check:
+                        # This guy will cause sleep
+                        http = self.http_pool.get_http_instance(errored=True)
+                        response = request.execute(num_retries=self.retries, http=http)
+                    else:
+                        raise
             else:
                 raise
         return response

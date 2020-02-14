@@ -85,6 +85,7 @@ def authorize(client_secret='client_secret.json',
               scopes=_SCOPES,
               custom_credentials=None,
               local=False,
+              http_pool=None,
               **kwargs):
 
     """Authenticate this application with a google account.
@@ -132,4 +133,4 @@ def authorize(client_secret='client_secret.json',
     else:
         credentials = _get_user_authentication_credentials(client_secret, scopes, credentials_directory, local)
 
-    return Client(credentials, http=http, check=check)
+    return Client(credentials, http=http, check=check, http_pool=http_pool)
