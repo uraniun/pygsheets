@@ -27,6 +27,7 @@ from pygsheets.exceptions import (PyGsheetsException, AuthenticationError,
                                   IncorrectCellLabel, WorksheetNotFound,
                                   RequestError, CellNotFound, InvalidUser,
                                   InvalidArgumentValue)
+from pygsheets.http_pool import HttpPool
 
 
 # Set default logging handler to avoid "No handler found" warnings.

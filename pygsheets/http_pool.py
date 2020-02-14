@@ -3,7 +3,10 @@ import time
 from google.oauth2 import service_account
 from google_auth_httplib2 import AuthorizedHttp
 
-from pygsheets.authorization import _SCOPES
+_SCOPES = (
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+)
 
 
 class HttpPool:
@@ -25,7 +28,9 @@ class HttpPool:
                 time.sleep(100)
                 self.__loop_over = False
             self.__current_http_idx += 1
-            if self.__current_http_idx > len(self.__pool):
+            if self.__current_http_idx >= len(self.__pool):
                 self.__loop_over = True
                 self.__current_http_idx = 0
+        else:
+            self.__loop_over = False
         return self.__pool[self.__current_http_idx]
