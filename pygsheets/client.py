@@ -44,18 +44,21 @@ class Client(object):
                                     Default: 3
     :param http:                    The underlying HTTP object to use to make requests. If not specified, a
                                     :class:`httplib2.Http` instance will be constructed.
+    :param check:                   Check for quota error and apply rate limiting.
+    :param seconds_per_quota:       Default value is 100 seconds
+
     """
 
     spreadsheet_cls = Spreadsheet
 
-    def __init__(self, credentials, retries=3, http=None, check=True, http_pool=None):
+    def __init__(self, credentials, retries=3, http=None, check=True, seconds_per_quota=100, http_pool=None):
         self.oauth = credentials
         self.logger = logging.getLogger(__name__)
 
         http = AuthorizedHttp(credentials, http=http)
         data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-        self.sheet = SheetAPIWrapper(http, data_path, retries=retries, check=check, http_pool=http_pool)
+        self.sheet = SheetAPIWrapper(http, data_path, retries=retries, check=check, seconds_per_quota=seconds_per_quota, http_pool=http_pool)
         self.drive = DriveAPIWrapper(http, data_path)
 
     @property
@@ -92,6 +95,15 @@ class Client(object):
         :param kwargs:      Standard parameters (see reference for details).
         :return: :class:`~pygsheets.Spreadsheet`
         """
+
+        if isinstance(template, str):
+            result = self.drive.copy_file(template, title, folder)
+            return self.open_by_key(result['id'])
+
+        if isinstance(template, Spreadsheet):
+            result = self.drive.copy_file(template.id, title, folder)
+            return self.open_by_key(result['id'])
+
         result = self.sheet.create(title, template=template, **kwargs)
         if folder:
             self.drive.move_file(result['spreadsheetId'],

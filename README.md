@@ -10,13 +10,13 @@ Features:
 * Control permissions of spreadsheets.
 * Set cell format, text format, color, write notes
 * Named and Protected Ranges Support
-* Work with range of cells easily with DataRange
-* TeamDrive Support
+* Work with range of cells easily with DataRange and Gridrange
+* Data validation support. checkboxes, drop-downs etc.
 * Offline calls batching support
 
 ## Updates
-* version [2.0.2](https://github.com/nithinmurali/pygsheets/releases/tag/2.0.2) released
-* For migrating from 1.x please see the [changelog](https://pygsheets.readthedocs.io/en/staging/changelog.html#version-2-0-0).
+* version [2.0.3](https://github.com/nithinmurali/pygsheets/releases/tag/2.0.3) released
+* hotfix [2.0.3.1](https://github.com/nithinmurali/pygsheets/releases/tag/2.0.3.1) released
 
 ## Installation
 
@@ -219,6 +219,10 @@ wks.delete_named_range('prices')
 # Plot a chart/graph
 wks.add_chart(('A1', 'A6'), [('B1', 'B6')], 'Health Trend')
 
+# create drop-downs
+wks.set_data_validation(start='C4', end='E7', condition_type='NUMBER_BETWEEN', condition_values=[2,10], strict=True, inputMessage="inut between 2 and 10")
+
+
 ```
 
 #### Pandas integration
@@ -246,6 +250,7 @@ cl.value  # Getting cell value
 c1.value_unformatted #Getting cell unformatted value
 c1.formula # Getting cell formula if any
 c1.note # any notes on the cell
+c1.address # address object with cell position
 
 cell_list = worksheet.range('A1:C7')  # get a range of cells 
 cell_list = worksheet.col(5, returnas='cell')  # return all cells in 5th column(E)
@@ -313,7 +318,8 @@ Almost all `get_` functions has a `returnas` param, set it to `range` to get a r
 ```python
 # Getting a Range object
 rng = wks.get_values('A1', 'C5', returnas='range')
-rng.unlink()  # linked ranges will sync the changes as they are changed
+rng.start_addr = 'A' # make the range unbounded on rows <Datarange Sheet1!A:B>
+drange.end_addr = None # make the range unbounded on both axes <Datarange Sheet1>
 
 # Named ranges
 rng.name = 'pricesRange'  # will make this range a named range
@@ -349,6 +355,7 @@ This library is still in development phase. So there is a lot of work to be done
 * Branch off of the `staging` branch, and submit Pull Requests back to
   that branch.  Note that the `master` branch is used for version
   bumps and hotfixes only.
+* For quick testing the changes you have made to source, run the file tests/manual_testing.py. It will give you an IPython shell with lastest code loaded.
 
 ### Report Issues/Features
 

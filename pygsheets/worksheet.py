@@ -1173,7 +1173,7 @@ class Worksheet(object):
 
         nrange = [x for x in self.spreadsheet.named_ranges if x.name == name and x.worksheet.id == self.id]
         if len(nrange) == 0:
-            self.spreadsheet.update_properties()
+            self.spreadsheet.fetch_properties()
             nrange = [x for x in self.spreadsheet.named_ranges if x.name == name and x.worksheet.id == self.id]
             if len(nrange) == 0:
                 raise RangeNotFound(name)
@@ -1190,7 +1190,7 @@ class Worksheet(object):
         if not self._linked: return False
 
         if name == '':
-            self.spreadsheet.update_properties()
+            self.spreadsheet.fetch_properties()
             nrange = [x for x in self.spreadsheet.named_ranges if x.worksheet.id == self.id]
             return nrange
         else:
@@ -1299,8 +1299,10 @@ class Worksheet(object):
             return False
         nan = kwargs.get('nan', "NaN")
 
-        start = format_addr(start, 'tuple')
-        df = df.replace(pd.np.nan, nan)
+        start = Address(start)
+        for col in df.select_dtypes('Int64'):
+            df[col] = df[col].astype('unicode').replace('<NA>', nan)
+        df = df.fillna(nan)
         values = df.astype('unicode').values.tolist()
         (df_rows, df_cols) = df.shape
         num_indexes = 1
@@ -1335,11 +1337,11 @@ class Worksheet(object):
                 values.insert(0, head)
                 df_rows += 1
 
-        end = format_addr(tuple([start[0]+df_rows, start[1]+df_cols]))
+        end = start + (df_rows, df_cols)
 
         if fit == extend is not False:
             raise InvalidArgumentValue("fit should not be same with extend")
-        
+
         if fit:
             self.cols = start[1] - 1 + df_cols
             self.rows = start[0] - 1 + df_rows
@@ -1356,22 +1358,20 @@ class Worksheet(object):
             if extend == "row":
                 self.rows = max(self.rows, start[0] - 1 + df_rows)
 
-        # @TODO optimize this
         if escape_formulae:
-            for row in values:
-                for i in range(len(row)):
-                    if type(row[i]) == str and (row[i].startswith('=') or row[i].startswith('+')):
-                        row[i] = "'" + str(row[i])
-        crange = format_addr(start) + ':' + end
+            values = list(map(lambda row: list(map(lambda cell: "'" + cell if type(cell) == str
+                          and (cell.startswith('=') or cell.startswith('+')) else cell, row)), values))
+
+        crange = start.label + ':' + end.label
         self.update_values(crange=crange, values=values)
 
-    def get_as_df(self, has_header=True, index_colum=None, start=None, end=None, numerize=True,
+    def get_as_df(self, has_header=True, index_column=None, start=None, end=None, numerize=True,
                   empty_value='', value_render=ValueRenderOption.FORMATTED_VALUE, **kwargs):
         """
         Get the content of this worksheet as a pandas data frame.
 
         :param has_header:      Interpret first row as data frame header.
-        :param index_colum:     Column to use as data frame index (integer).
+        :param index_column:     Column to use as data frame index (integer).
         :param numerize:        Numerize cell values.
         :param empty_value:     Placeholder value to represent empty cells when numerizing.
         :param start:           Top left cell to load into data frame. (default: A1)
@@ -1387,6 +1387,7 @@ class Worksheet(object):
 
         include_tailing_empty = kwargs.get('include_tailing_empty', False)
         include_tailing_empty_rows = kwargs.get('include_tailing_empty_rows', False)
+        index_column = index_column or kwargs.get('index_colum', None)
 
         if not pd:
             raise ImportError("pandas")
@@ -1401,21 +1402,21 @@ class Worksheet(object):
                                          value_render=value_render, include_tailing_empty_rows=include_tailing_empty_rows)
 
         if numerize:
-            values = [numericise_all(row[:len(values[0])], empty_value) for row in values]
+            values = [numericise_all(row[:len(values)], empty_value) for row in values]
 
         if has_header:
             keys = values[0]
-            values = [row[:len(values[0])] for row in values[1:]]
+            values = [row[:len(keys)] for row in values[1:]]
             df = pd.DataFrame(values, columns=keys)
         else:
             df = pd.DataFrame(values)
 
-        if index_colum:
-            if index_colum < 1 or index_colum > len(df.columns):
-                raise ValueError("index_column %s not found" % index_colum)
+        if index_column:
+            if index_column < 1 or index_column > len(df.columns):
+                raise ValueError("index_column %s not found" % index_column)
             else:
-                df.index = df[df.columns[index_colum - 1]]
-                del df[df.columns[index_colum - 1]]
+                df.index = df[df.columns[index_column - 1]]
+                del df[df.columns[index_column - 1]]
         return df
 
     def export(self, file_format=ExportType.CSV, filename=None, path=''):
@@ -1476,7 +1477,7 @@ class Worksheet(object):
 
         request = {"sortRange": {
             "range": {
-                    
+
                 "sheetId": self.id,
                 "startRowIndex": start[0]-1,
                 "endRowIndex": end[0],
@@ -1488,7 +1489,7 @@ class Worksheet(object):
                      "dimensionIndex": basecolumnindex,
                      "sortOrder": sortorder
                  }
-             ],      
+             ],
         }}
         self.client.sheet.batch_update(self.spreadsheet.id, request)
 
@@ -1531,6 +1532,53 @@ class Worksheet(object):
                 matched_charts.append(Chart(worksheet=self, json_obj=chart))
         return matched_charts
 
+    def set_data_validation(self, start=None, end=None, condition_type=None, condition_values=None,
+                            grange=None, **kwargs):
+        """
+        Sets a data validation rule to every cell in the range. To clear validation in a range,
+        call this with no condition_type specified.
+
+        refer to `api docs <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/other#conditiontype>`__ for possible inputs.
+
+        :param start: start address
+        :param end: end address
+        :param grange: addredss as grid range
+        :param condition_type: validation condition type: `possible values <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/other#conditiontype>`__
+        :param condition_values: list of values for supporting condition type. For example ,
+                when condition_type is NUMBER_BETWEEN, value should be two numbers indicationg lower
+                and upper bound. See api docs for more info.
+        :param kwargs: other options of rule.
+                possible values: inputMessage, strict, showCustomUi
+                `ref <https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/cells#datavalidationrule>`__
+        """
+        if not grange:
+            grange = GridRange(worksheet=self, start=start, end=end)
+        grange.set_worksheet(self)
+
+        condition_values = list() if not condition_values else condition_values
+        json_values = []
+        for value in condition_values:
+            if condition_type in \
+                    ['DATE_BEFORE', 'DATE_AFTER', 'DATE_ON_OR_BEFORE', 'DATE_ON_OR_AFTER']:
+                json_values.append({'relativeDate': str(value)})
+            else:
+                json_values.append({'userEnteredValue': str(value)})
+
+        request = {"setDataValidation": {
+            "range": grange.to_json()
+            }
+        }
+        if condition_type:
+            rule = {'condition': {
+                'type': condition_type,
+                'values': json_values
+                }
+            }
+            for kwarg in kwargs:
+                rule[kwarg] = kwargs[kwarg]
+            request['setDataValidation']['rule'] = rule
+        self.client.sheet.batch_update(self.spreadsheet.id, request)
+
     def __eq__(self, other):
         return self.id == other.id and self.spreadsheet == other.spreadsheet
 
@@ -1548,7 +1596,7 @@ class Worksheet(object):
             if item >= self.rows:
                 raise CellNotFound
             try:
-                row = self.get_row(item, include_tailing_empty=True)
+                row = [''] + self.get_row(item, include_tailing_empty=True)
             except IndexError:
                 raise CellNotFound
             return row
